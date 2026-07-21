@@ -1,6 +1,6 @@
 # Project Context
 
-> Describes the repository **as built on this branch**: Story 1 only. Later stories extend this
+> Describes the repository **as built on this branch**: Stories 1 and 2. Later stories extend this
 > document as they land.
 
 ## 1. Purpose
@@ -16,9 +16,9 @@ Built:
 - Durable persistence of each push event with its raw payload.
 - An audit trail of every event seen, regardless of type.
 - Idempotent re-runs.
+- Projection of the key push attributes into queryable columns alongside the raw payload.
 
 Not built yet, by story:
-- **Story 2** — structured projection of push attributes into queryable columns.
 - **Story 3** — actor and repository enrichment.
 - **Story 4** — rate-limit tracking, retries, backoff, structured logging to stdout.
 
@@ -51,8 +51,17 @@ cannot drift apart. `Gemfile.lock` is a committed build input.
 | `id` | bigserial PK | internal surrogate key |
 | `github_event_id` | string, unique | envelope `id` |
 | `push_id` | bigint, unique | `payload.push_id` |
+| `repo_id` | bigint, indexed | `repo.id` |
+| `actor_id` | bigint, indexed | `actor.id` |
+| `ref` | string | `payload.ref` |
+| `head_sha` | string | `payload.head` |
+| `before_sha` | string | `payload.before` |
 | `event_created_at` | timestamptz | upstream `created_at` |
 | `raw_json` | jsonb, not null | the verbatim event |
+
+`head` and `before` are stored as `head_sha` / `before_sha` because that is what they contain and
+because a bare `before` column reads poorly in SQL. The projected columns are nullable: they are
+derived from the payload, so a sparse event still persists rather than failing ingestion.
 
 ### `raw_events`
 | Column | Type | Source |
@@ -104,7 +113,7 @@ Read through `Ingestion.config`, never from `ENV` at a call site.
 ```bash
 docker compose up --build          # db, api, ingest-worker
 docker compose run --rm ingest     # one cycle, exits 0
-docker compose run --rm test       # 39 examples, 0 failures
+docker compose run --rm test       # 43 examples, 0 failures
 ```
 
 Then check the data:
@@ -123,5 +132,5 @@ new rows, because the feed overlaps heavily between polls.
 
 - The public feed exposes roughly the last five minutes of activity and cannot be replayed, so
   gaps are inherent. Completeness is not a goal.
-- Unauthenticated requests are capped at 60/hour per IP. Story 1 does not yet track that budget.
+- Unauthenticated requests are capped at 60/hour per IP; that budget is not tracked yet (Story 4).
 - Ingestion logs are not routed to stdout yet, so `docker compose logs -f` shows little. Story 4.

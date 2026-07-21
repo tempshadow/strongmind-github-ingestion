@@ -6,6 +6,22 @@ Entries are added only after a story branch is merged into `main`.
 
 ## [Unreleased]
 
+### STORY-2: Persist Raw and Structured Data (`8a5ef6b`)
+- **Added:**
+  - Migration `add_structured_columns_to_push_events` — projects `repo_id`, `actor_id`, `ref`, `head_sha`, `before_sha` into queryable columns
+  - Indexes on `repo_id` and `actor_id` for efficient filtering
+  - Query-by-column capability: `SELECT repo_id, ref, head_sha, before_sha FROM push_events` requires no JSON parsing
+- **Changed:**
+  - `Ingestion::EventProcessor` now extracts the push attributes from the payload and stores them as structured columns alongside raw JSON
+  - Sparse events (missing `repo`, `actor`, or payload fields) are persisted correctly with null values in the projection
+- **Fixed:**
+  - Events with missing `push_id` are flagged as malformed and skipped, rather than persisted with incomplete identity
+- **Technical Notes:**
+  - Raw-plus-projection pattern: `raw_json` column retains the verbatim payload for audit/recovery; projected columns satisfy the queryability requirement without requiring JSON parsing
+  - `head` and `before` payload fields are stored as `head_sha` and `before_sha` columns because that is what they contain; mapping documented in `context.md`
+  - Columns are nullable: projection is derived from the payload, so a partial event persists rather than failing ingestion
+  - Acceptance criteria: raw payloads retained ✓, all required fields queryable without JSON parsing ✓, modeling choices documented ✓
+
 ### STORY-1: Ingest GitHub Push Events (`f6e9a5e`)
 - **Added:**
   - `Github::Client` — thin HTTP wrapper over `GET /events` with User-Agent, timeouts, JSON parsing, and rate-limit header capture
