@@ -1,0 +1,91 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: strongmind_db
+    environment:
+      POSTGRES_USER: strongmind_ingestion
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: strongmind_ingestion_dev
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U strongmind_ingestion"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: strongmind_api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      RAILS_ENV: development
+      DATABASE_URL: postgresql://strongmind_ingestion:password@db:5432/strongmind_ingestion_dev
+      LOG_LEVEL: info
+    volumes:
+      - .:/app
+      - bundle:/usr/local/bundle
+    ports:
+      - "3000:3000"
+    command: bundle exec rails server -b 0.0.0.0
+
+  ingest-worker:
+    build: .
+    container_name: strongmind_ingest_worker
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      RAILS_ENV: production
+      DATABASE_URL: postgresql://strongmind_ingestion:password@db:5432/strongmind_ingestion_dev
+      LOG_LEVEL: info
+      GITHUB_EVENTS_URL: https://api.github.com/events
+      POLL_INTERVAL_SECONDS: 60
+      RATE_LIMIT_RESERVE: 10
+      REQUEST_TIMEOUT_SECONDS: 10
+      MAX_RETRIES: 3
+      RETRY_BASE_DELAY_SECONDS: 1
+    restart: on-failure:3
+    command: bundle exec bin/ingest --loop
+
+  ingest:
+    build: .
+    container_name: strongmind_ingest_once
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      RAILS_ENV: production
+      DATABASE_URL: postgresql://strongmind_ingestion:password@db:5432/strongmind_ingestion_dev
+      LOG_LEVEL: info
+      GITHUB_EVENTS_URL: https://api.github.com/events
+      RATE_LIMIT_RESERVE: 10
+      REQUEST_TIMEOUT_SECONDS: 10
+      MAX_RETRIES: 3
+      RETRY_BASE_DELAY_SECONDS: 1
+    profiles: ["manual"]
+    command: bundle exec bin/ingest --once
+
+  test:
+    build: .
+    container_name: strongmind_test
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      RAILS_ENV: test
+      DATABASE_URL: postgresql://strongmind_ingestion:password@db:5432/strongmind_ingestion_test
+      LOG_LEVEL: debug
+    volumes:
+      - .:/app
+      - bundle:/usr/local/bundle
+    profiles: ["manual"]
+    command: bundle exec rspec
+
+volumes:
+  pgdata:
+  bundle:
