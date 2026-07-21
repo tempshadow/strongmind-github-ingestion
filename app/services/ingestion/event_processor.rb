@@ -43,23 +43,12 @@ module Ingestion
       push_event = PushEvent.new(
         github_event_id: @event[:id],
         push_id: @event[:payload][:push_id],
-        repo_id: @event[:repo]&.dig(:id),
-        actor_id: @event[:actor]&.dig(:id),
-        ref: @event[:payload][:ref],
-        head_sha: @event[:payload][:head],
-        before_sha: @event[:payload][:before],
         event_created_at: @event[:created_at],
         raw_json: @event
       )
 
       push_event.save!
       @outcome = :inserted
-
-      # Also save the raw event for the audit trail
-      RawEvent.create!(
-        event_id: @event[:id],
-        payload: @event
-      )
     rescue ActiveRecord::RecordNotUnique
       @outcome = :duplicate
     rescue ActiveRecord::RecordInvalid => e

@@ -3,7 +3,6 @@ require_relative "../config/boot"
 require_relative "../config/environment"
 
 require "optparse"
-require "ingestion/runner"
 
 mode = :once
 options = {}
@@ -24,7 +23,7 @@ runner = Ingestion::Runner.new
 
 begin
   if mode == :once
-    summary = runner.run_once
+    runner.run_once
     exit(0)
   else
     runner.run_loop

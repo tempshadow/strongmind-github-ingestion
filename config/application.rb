@@ -1,15 +1,10 @@
 require_relative "boot"
 
-require "rails/all"
+require "rails"
 
-# Only load ActiveRecord, ActionController and middleware we need
-%w[
-  active_record
-  action_controller/railtie
-  rails/test_unit/railtie
-].each do |railtie|
-  require railtie
-end
+# API-only: load just the railties this service needs.
+require "active_record/railtie"
+require "action_controller/railtie"
 
 Bundler.require(*Rails.groups)
 

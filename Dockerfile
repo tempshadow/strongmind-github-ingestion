@@ -7,8 +7,9 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# The committed lockfile is a build input, not a build artifact.
 COPY Gemfile Gemfile.lock ./
-RUN bundle install --deployment --without development test
+RUN bundle install
 
 FROM ruby:3.3.0-slim
 
@@ -26,7 +27,7 @@ COPY --from=builder /usr/local/bundle /usr/local/bundle
 COPY --chown=app:app . .
 
 ENV PATH="/usr/local/bundle/bin:$PATH"
-ENV RAILS_ENV=production
+ENV RAILS_ENV=development
 
 EXPOSE 3000
 
