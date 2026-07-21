@@ -59,7 +59,19 @@ After `docker compose up`, wait 30 seconds and then check:
    ```
    You should see the key push attributes as columns, with no JSON parsing. `raw_events` will have at least as many rows, since it records every event type.
 
-3. **Tests pass:**
+3. **Actors and repositories are enriched:**
+   ```bash
+   docker compose exec -T db psql -U strongmind_ingestion -d strongmind_ingestion_dev \
+     -c "SELECT p.push_id, a.login, r.full_name FROM push_events p
+         JOIN actors a ON a.id = p.actor_id
+         JOIN repositories r ON r.id = p.repo_id LIMIT 5;"
+   ```
+   Running `ingest` a second time over the same actors issues no enrichment requests — they
+   are served from these tables. If the remaining hourly budget is at or below
+   `RATE_LIMIT_RESERVE`, enrichment is skipped and the push events land unenriched; that is
+   expected, and the run still exits 0.
+
+4. **Tests pass:**
    ```bash
    docker compose run --rm test
    ```
@@ -82,6 +94,7 @@ Environment variables (see `.env.example`):
 - `GITHUB_EVENTS_URL` — GitHub events endpoint (default: https://api.github.com/events)
 - `POLL_INTERVAL_SECONDS` — Seconds between polls in loop mode (default: 60)
 - `REQUEST_TIMEOUT_SECONDS` — HTTP timeout (default: 10)
+- `RATE_LIMIT_RESERVE` — Requests held back from enrichment (default: 10)
 
 ## Development
 

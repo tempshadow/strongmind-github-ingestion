@@ -12,11 +12,25 @@ module Github
     end
 
     def fetch_events
-      response = make_request(URI(@url))
-      parse_response(response)
+      get(@url)
+    end
+
+    def fetch_resource(url)
+      get(url)
     end
 
     private
+
+    def get(url)
+      parse_response(make_request(parse_uri(url)))
+    end
+
+    # Bot logins such as `github-actions[bot]` reach us as unescaped URLs.
+    def parse_uri(url)
+      URI(url)
+    rescue URI::InvalidURIError => e
+      raise Error, "Invalid URL: #{e.message}"
+    end
 
     def make_request(uri)
       http = Net::HTTP.new(uri.host, uri.port)
@@ -35,10 +49,11 @@ module Github
     def parse_response(response)
       raise Error, "HTTP error: #{response.code}" unless response.is_a?(Net::HTTPSuccess)
 
-      body = response.body.empty? ? "[]" : response.body
+      body = response.body.to_s.empty? ? "[]" : response.body
       {
         status: response.code.to_i,
-        body: JSON.parse(body, symbolize_names: true)
+        body: JSON.parse(body, symbolize_names: true),
+        rate_limit: RateLimit.from_response(response)
       }
     rescue JSON::ParserError => e
       raise Error, "Invalid JSON response: #{e.message}"

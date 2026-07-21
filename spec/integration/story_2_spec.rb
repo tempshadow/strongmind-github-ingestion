@@ -27,6 +27,12 @@ RSpec.describe "Story 2: Persist Raw and Structured Data" do
       status: 200,
       body: github_events
     })
+    # Story 3 enrichment runs after persistence; this story only cares about the projection.
+    allow(mock_client).to receive(:fetch_resource).and_return({
+      status: 200,
+      body: { login: "octocat", full_name: "octocat/Hello-World" },
+      rate_limit: Github::RateLimit.unknown
+    })
   end
 
   it "makes the required fields queryable without parsing JSON" do

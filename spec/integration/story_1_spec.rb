@@ -70,6 +70,15 @@ RSpec.describe "Story 1: Ingest GitHub Push Events" do
     ]
   end
 
+  before do
+    # Story 3 enrichment runs after persistence; this story only cares about ingestion.
+    allow(mock_client).to receive(:fetch_resource).and_return({
+      status: 200,
+      body: { login: "octocat" },
+      rate_limit: Github::RateLimit.unknown
+    })
+  end
+
   describe "run_once with fresh database" do
     it "ingests PushEvents and stores raw data durably" do
       allow(mock_client).to receive(:fetch_events).and_return({
