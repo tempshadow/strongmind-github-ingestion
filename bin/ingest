@@ -5,34 +5,25 @@ require_relative "../config/environment"
 require "optparse"
 
 mode = :once
-options = {}
 
 OptionParser.new do |opts|
-  opts.banner = "Usage: bin/ingest [options]"
-
-  opts.on("--once", "Run one ingestion cycle and exit") do
-    mode = :once
-  end
-
-  opts.on("--loop", "Run ingestion cycles continuously") do
-    mode = :loop
-  end
+  opts.banner = "Usage: bin/ingest [--once|--loop]"
+  opts.on("--once", "Run one ingestion cycle and exit") { mode = :once }
+  opts.on("--loop", "Run ingestion cycles continuously") { mode = :loop }
 end.parse!
 
 runner = Ingestion::Runner.new
 
 begin
-  if mode == :once
-    runner.run_once
-    exit(0)
-  else
-    runner.run_loop
-  end
-rescue SignalException => e
-  Rails.logger.info "Received signal: #{e.message}"
+  mode == :once ? runner.run_once : runner.run_loop
+  # A cycle that did no work because the budget was spent still completed.
+  exit(0)
+rescue Interrupt, SignalException => e
+  runner.stop!(e.class.name)
   exit(0)
 rescue StandardError => e
-  Rails.logger.error "Fatal error: #{e.class} #{e.message}"
-  Rails.logger.error e.backtrace.join("\n")
+  # Exit non-zero only for conditions a restart could plausibly fix.
+  Rails.logger.error("event=ingestion.fatal error=#{e.class} message=#{e.message.inspect}")
+  Rails.logger.error(e.backtrace.first(10).join("\n"))
   exit(1)
 end

@@ -48,9 +48,22 @@ After `docker compose up`, wait 30 seconds and then check:
 
 1. **Logs show ingestion running:**
    ```bash
-   docker compose logs ingest-worker
+   docker compose logs -f ingest-worker
    ```
-   Ingestion logs are not routed to stdout yet (Story 4), so expect only the database-wait line. Verify via the database instead.
+   Every line carries a `run_id` correlating one cycle. Expect this sequence:
+   ```
+   run_id=2ca37a73 event=ingestion.started mode=once
+   run_id=2ca37a73 event=ingestion.fetched events=30 rate_limit="remaining=59/60 reset_at=..."
+   run_id=2ca37a73 event=ingestion.filtered push_events=29 rejected=1
+   run_id=2ca37a73 event=ingestion.processed inserted=29 duplicates=0 malformed=0
+   run_id=2ca37a73 event=ingestion.enriched cache_hits=0 fetches=49 skipped=7 failed=1
+   run_id=2ca37a73 event=ingestion.finished result="Run 2ca37a73: fetched=30 ..."
+   run_id=2ca37a73 event=ingestion.sleeping seconds=60 reason="poll interval"
+   ```
+   On the second cycle `duplicates` should rise and `inserted` fall to 0, and `cache_hits`
+   should replace `fetches` — that is idempotency and the enrichment cache working.
+   `skipped` is enrichment yielding at the rate-limit reserve, which is expected on a
+   60 requests/hour budget.
 
 2. **Data is persisted:**
    ```bash
@@ -95,6 +108,19 @@ Environment variables (see `.env.example`):
 - `POLL_INTERVAL_SECONDS` — Seconds between polls in loop mode (default: 60)
 - `REQUEST_TIMEOUT_SECONDS` — HTTP timeout (default: 10)
 - `RATE_LIMIT_RESERVE` — Requests held back from enrichment (default: 10)
+- `MAX_ATTEMPTS` — Total attempts per HTTP request before giving up (default: 3)
+- `RETRY_BASE_DELAY_SECONDS` — Backoff base; doubles each attempt, plus jitter (default: 1)
+
+## Operational Behaviour
+
+- **Exit codes.** `bin/ingest` exits 0 whenever a cycle completed, including one that did no work
+  because the rate-limit budget was spent. Non-zero is reserved for misconfiguration — the only
+  condition a restart could fix — which is why `ingest-worker` safely carries `restart: on-failure:3`.
+- **Transient failures.** Timeouts, 5xx, 429, and a rate-limited 403 are retried with exponential
+  backoff plus jitter, then the cycle is abandoned and logged. The process stays alive; it does
+  not crash-loop.
+- **Shutdown.** `docker compose stop` sends `SIGTERM`; the runner finishes its in-flight cycle,
+  logs `event=ingestion.shutdown`, and exits 0 within about a second.
 
 ## Development
 
