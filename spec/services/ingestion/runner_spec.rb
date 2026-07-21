@@ -126,6 +126,53 @@ RSpec.describe Ingestion::Runner do
     end
   end
 
+  describe "enrichment" do
+    let(:enrichable) do
+      [
+        events_response.first.deep_merge(
+          actor: { url: "https://api.github.com/users/octocat" },
+          repo: { url: "https://api.github.com/repos/octocat/Hello-World" }
+        )
+      ]
+    end
+
+    before do
+      allow(mock_client).to receive(:fetch_events).and_return({
+        status: 200,
+        body: enrichable,
+        rate_limit: Github::RateLimit.new(limit: 60, remaining: 50, reset: nil)
+      })
+      allow(mock_client).to receive(:fetch_resource).and_return({
+        status: 200,
+        body: { login: "octocat", full_name: "octocat/Hello-World" },
+        rate_limit: Github::RateLimit.new(limit: 60, remaining: 48, reset: nil)
+      })
+    end
+
+    it "reports enrichment counts and the latest rate-limit posture" do
+      summary = runner.run_once
+
+      expect(summary.enrichment_fetches).to eq(2)
+      expect(summary.enrichment_hits).to eq(0)
+      expect(summary.enrichment_skips).to eq(0)
+      expect(summary.rate_limit.remaining).to eq(48)
+    end
+
+    it "reports cache hits on the second cycle" do
+      runner.run_once
+      summary = runner.run_once
+
+      expect(summary.enrichment_hits).to eq(2)
+      expect(summary.enrichment_fetches).to eq(0)
+    end
+
+    it "reports an unknown budget when the feed sends no headers" do
+      allow(mock_client).to receive(:fetch_events).and_return({ status: 200, body: [] })
+
+      expect(runner.run_once.rate_limit).not_to be_known
+    end
+  end
+
   describe "#run_once idempotency" do
     it "is safe to call multiple times with the same data" do
       allow(mock_client).to receive(:fetch_events).and_return({

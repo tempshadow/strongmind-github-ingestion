@@ -10,9 +10,20 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_20_000003) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_21_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
+
+  create_table "actors", id: :bigint, default: nil, force: :cascade do |t|
+    t.string "login"
+    t.string "url"
+    t.string "avatar_url"
+    t.jsonb "raw_json", null: false
+    t.timestamptz "fetched_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["login"], name: "index_actors_on_login"
+  end
 
   create_table "push_events", force: :cascade do |t|
     t.string "github_event_id", null: false
@@ -30,6 +41,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_20_000003) do
     t.index ["event_created_at"], name: "index_push_events_on_event_created_at"
     t.index ["github_event_id"], name: "index_push_events_on_github_event_id", unique: true
     t.index ["push_id"], name: "index_push_events_on_push_id", unique: true
+    t.index ["repo_id", "event_created_at"], name: "index_push_events_on_repo_id_and_event_created_at"
     t.index ["repo_id"], name: "index_push_events_on_repo_id"
   end
 
@@ -39,6 +51,17 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_20_000003) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["event_id"], name: "index_raw_events_on_event_id", unique: true
+  end
+
+  create_table "repositories", id: :bigint, default: nil, force: :cascade do |t|
+    t.string "name"
+    t.string "full_name"
+    t.string "url"
+    t.jsonb "raw_json", null: false
+    t.timestamptz "fetched_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["full_name"], name: "index_repositories_on_full_name", unique: true
   end
 
 end

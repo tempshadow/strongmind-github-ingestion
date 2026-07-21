@@ -6,6 +6,25 @@ Entries are added only after a story branch is merged into `main`.
 
 ## [Unreleased]
 
+### STORY-3: Enrich Push Events (`f76f3c8`)
+- **Added:**
+  - `Ingestion::Enricher` — resolves actor and repository URLs in a cache-first pattern, governed by rate-limit budget
+  - `Github::RateLimit` — parses `X-RateLimit-*` headers and tracks spendable budget above the reserve floor
+  - `Actor` and `Repository` models with GitHub IDs as primary keys, avoiding redundant fetches
+  - Migrations: `create_actors`, `create_repositories`, `add_enrichment_indexes_to_push_events`
+  - Integration tests verifying cache hits, budget enforcement, and unenriched persistence
+- **Changed:**
+  - `Github::Client#fetch_resource` — added for enrichment requests; reuses User-Agent, timeouts, JSON parsing, and rate-limit capture
+  - `Ingestion::Runner` — orchestrates enrichment after persistence; no fetches sacrifice completed ingestion
+  - `RunSummary` — added `enrichment_hits`, `enrichment_fetches`, `enrichment_skips`, `enrichment_failures` counters and `rate_limit` field
+- **Technical Notes:**
+  - Cache-first strategy: the `actors` and `repositories` tables are the cache; a hit by GitHub ID costs no HTTP request
+  - Batch deduplication: multiple references to the same actor/repo in one batch trigger only one fetch
+  - Budget-aware: enrichment stops when spendable budget (remaining minus reserve) falls to zero; unmatched references are counted as skips and left for a later cycle
+  - No cascade between ingestion and enrichment: unenriched push events are valid, queryable records; failed enrichment is logged, not raised
+  - Acceptance criteria: URLs extracted from payload ✓, data persisted durably ✓, repeated fetches avoided via cache ✓, design brief updated ✓
+  - Story 1 & 2 criteria still met: events filtered and persisted ✓, raw payloads retained ✓, fields queryable ✓
+
 ### STORY-2: Persist Raw and Structured Data (`8a5ef6b`)
 - **Added:**
   - Migration `add_structured_columns_to_push_events` — projects `repo_id`, `actor_id`, `ref`, `head_sha`, `before_sha` into queryable columns
