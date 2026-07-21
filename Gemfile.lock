@@ -1,0 +1,22 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  dotenv-rails (~> 2.8)
+  pg (~> 1.1)
+  puma (~> 6.0)
+  rails (~> 7.1.0)
+  rspec-rails (~> 6.1)
+  simplecov (~> 0.22)
+  simplecov-console (~> 0.9)
+  webmock (~> 3.23)
+
+RUBY VERSION
+   ruby 3.3.0p0
+
+BUNDLED WITH
+   2.5.3

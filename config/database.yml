@@ -1,0 +1,22 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: <%= ENV["DB_POOL"] || 5 %>
+  timeout: 5000
+  host: <%= ENV["PGHOST"] || "localhost" %>
+  port: <%= ENV["PGPORT"] || 5432 %>
+  username: <%= ENV["PGUSER"] || "strongmind_ingestion" %>
+  password: <%= ENV["PGPASSWORD"] %>
+  database: <%= ENV["PGDATABASE"] || "strongmind_ingestion_dev" %>
+
+development:
+  <<: *default
+  database: <%= ENV["PGDATABASE"] || "strongmind_ingestion_dev" %>
+
+test:
+  <<: *default
+  database: <%= ENV["PGDATABASE"] || "strongmind_ingestion_test" %>
+
+production:
+  <<: *default
+  database: <%= ENV["PGDATABASE"] || "strongmind_ingestion_prod" %>

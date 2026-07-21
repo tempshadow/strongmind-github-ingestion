@@ -1,0 +1,39 @@
+#!/usr/bin/env ruby
+require_relative "../config/boot"
+require_relative "../config/environment"
+
+require "optparse"
+require "ingestion/runner"
+
+mode = :once
+options = {}
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: bin/ingest [options]"
+
+  opts.on("--once", "Run one ingestion cycle and exit") do
+    mode = :once
+  end
+
+  opts.on("--loop", "Run ingestion cycles continuously") do
+    mode = :loop
+  end
+end.parse!
+
+runner = Ingestion::Runner.new
+
+begin
+  if mode == :once
+    summary = runner.run_once
+    exit(0)
+  else
+    runner.run_loop
+  end
+rescue SignalException => e
+  Rails.logger.info "Received signal: #{e.message}"
+  exit(0)
+rescue StandardError => e
+  Rails.logger.error "Fatal error: #{e.class} #{e.message}"
+  Rails.logger.error e.backtrace.join("\n")
+  exit(1)
+end
