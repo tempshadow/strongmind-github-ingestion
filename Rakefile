@@ -1,7 +1,7 @@
 #!/usr/bin/env rake
 
-require_relative "config/boot"
-require "rake"
-require "rails/tasks"
+require_relative "config/application"
+
+Rails.application.load_tasks
 
 task default: [:spec]

@@ -1,6 +1,6 @@
 # StrongMind GitHub Ingestion
 
-A Rails-based service that ingests `PushEvent` data from the public GitHub Events API, enriches it with actor and repository metadata, and stores everything durably in PostgreSQL.
+A Rails-based service that ingests `PushEvent` data from the public GitHub Events API and stores everything durably in PostgreSQL.
 
 ## Quick Start
 
@@ -33,13 +33,13 @@ docker compose exec -T db psql -U strongmind_ingestion -d strongmind_ingestion_d
   -c "SELECT COUNT(*) FROM push_events;"
 
 docker compose exec -T db psql -U strongmind_ingestion -d strongmind_ingestion_dev \
-  -c "SELECT COUNT(*) FROM actors;"
+  -c "SELECT COUNT(*) FROM raw_events;"
 ```
 
 ### Rails Console
 ```bash
 docker compose exec api rails console
-# Then: PushEvent.count, Actor.count, etc.
+# Then: PushEvent.count, RawEvent.count
 ```
 
 ## How to Verify It's Working
@@ -50,14 +50,14 @@ After `docker compose up`, wait 30 seconds and then check:
    ```bash
    docker compose logs ingest-worker
    ```
-   Look for lines like: `Ingestion started mode=loop` and `Fetched X events from GitHub`
+   Story 1 does not route ingestion logs to stdout yet (Story 4), so expect only the database-wait line. Verify via the database instead.
 
 2. **Data is persisted:**
    ```bash
    docker compose exec -T db psql -U strongmind_ingestion -d strongmind_ingestion_dev \
-     -c "SELECT github_event_id, ref FROM push_events LIMIT 5;"
+     -c "SELECT github_event_id, push_id FROM push_events LIMIT 5;"
    ```
-   You should see rows with event IDs and refs.
+   You should see rows with event IDs and push IDs. `raw_events` will have at least as many rows, since it records every event type.
 
 3. **Tests pass:**
    ```bash
@@ -68,12 +68,10 @@ After `docker compose up`, wait 30 seconds and then check:
 ## Architecture
 
 See [context.md](context.md) for full documentation on:
-- Data model (push_events, actors, repositories, raw_events)
+- Data model (push_events, raw_events)
 - Ingestion flow (polling, filtering, persistence)
-- Enrichment flow (cache-first actor/repository resolution)
-- Rate limiting (60 req/hr budget management)
 - Idempotency (duplicate detection via unique constraints)
-- Operational behavior (logging, signal handling, exit codes)
+- Configuration and verification steps
 
 ## Configuration
 
@@ -83,9 +81,7 @@ Environment variables (see `.env.example`):
 - `LOG_LEVEL` — Log verbosity (default: info)
 - `GITHUB_EVENTS_URL` — GitHub events endpoint (default: https://api.github.com/events)
 - `POLL_INTERVAL_SECONDS` — Seconds between polls in loop mode (default: 60)
-- `RATE_LIMIT_RESERVE` — Minimum requests to preserve (default: 10)
 - `REQUEST_TIMEOUT_SECONDS` — HTTP timeout (default: 10)
-- `MAX_RETRIES` — Retry attempts on transient failure (default: 3)
 
 ## Development
 

@@ -2,7 +2,11 @@
 set -e
 
 # Wait for PostgreSQL to be ready
-until pg_isready -h "$PGHOST" -U "$PGUSER"; do
+PGHOST=${PGHOST:-db}
+PGPORT=${PGPORT:-5432}
+PGUSER=${PGUSER:-strongmind_ingestion}
+
+until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER"; do
   echo "Waiting for PostgreSQL..."
   sleep 2
 done

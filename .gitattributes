@@ -1,0 +1,8 @@
+* text=auto
+*.rb text eol=lf
+*.erb text eol=lf
+Gemfile text eol=lf
+Gemfile.lock text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+bin/** text eol=lf
