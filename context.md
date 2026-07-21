@@ -20,12 +20,10 @@ Built:
 - Cache-first enrichment of the actor and repository each push event references, governed by the
   remaining rate-limit budget.
 
-Not built yet, by story:
-- **Story 4** — retries, backoff, signal handling, structured logging to stdout. The rate-limit
-  headers are already read and acted on by enrichment (Section 7); what Story 4 adds is the
-  behaviour when the feed request itself is refused, and the operator-facing logging.
+- Structured, run-correlated logging to stdout; bounded retries with jittered backoff; graceful
+  handling of a refused feed request; signal handling and an explicit exit-code contract.
 
-Not built at all: UI, analytics, dashboards, background jobs, queues, object storage,
+All four stories are now built. Not built at all: UI, analytics, dashboards, background jobs, queues, object storage,
 authentication.
 
 ## 3. Architecture
@@ -164,7 +162,7 @@ Enrichment is idempotent for the same reason: `actors` and `repositories` are ke
 IDs, and the enricher only writes on a cache miss, so a re-run over the same batch performs no
 writes and issues no requests.
 
-## 6a. Rate Limiting (partial — Story 3 scope)
+## 6a. Rate Limiting
 
 `Github::RateLimit` parses `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`
 from every response. Absent or malformed headers mean the budget is **unknown**, not unlimited;
@@ -174,8 +172,47 @@ demonstrate. This is what makes the offline test suite work without inventing he
 `RATE_LIMIT_RESERVE` (default 10) is the floor. Enrichment stops below it so the next cycle can
 always afford at least the feed request itself.
 
-Not built yet: backoff, sleeping until reset, and graceful handling of a 403/429 on the **feed**
-request. Today a refused feed request raises out of the runner and exits non-zero. Story 4.
+A refused feed request — 429, or 403 with the budget exhausted — is classified as transient. The
+cycle is abandoned and logged; the process stays alive. In `--loop` mode the runner then sleeps
+until `X-RateLimit-Reset` rather than at the normal cadence, so it does not spend attempts it
+cannot afford.
+
+## 6b. Failure Handling and Observability
+
+**Error classification.** `Github::Client` raises `TransientError` for timeouts, connection
+resets, 5xx, 429, and a rate-limited 403; `PermanentError` for other 4xx, unparseable bodies, and
+malformed URLs. Only transient errors are retried — up to `MAX_ATTEMPTS`, with exponential backoff
+plus jitter. Jitter matters because every retry is driven by the same upstream, so unjittered
+delays would resynchronise.
+
+**No crash loops.** A cycle that cannot complete is logged and abandoned; the runner returns a
+summary rather than raising. `bin/ingest` exits 0 whenever a cycle completed — including a cycle
+that did no work because the budget was spent. Non-zero is reserved for conditions a restart could
+plausibly fix, which is why `ingest-worker` can safely carry `restart: on-failure:3`.
+
+**Signals.** `SIGTERM` and `SIGINT` set a stop flag; the loop finishes its in-flight cycle, logs
+`ingestion.shutdown`, and exits 0. The poll sleep wakes every second to check that flag, so
+shutdown is prompt — a plain `sleep(poll_interval)` would leave Docker waiting out its timeout and
+escalating to `SIGKILL` (exit 137).
+
+**Logging.** Every line goes to stdout, unbuffered, as `key=value` pairs prefixed with a `run_id`
+that correlates one cycle. Values containing whitespace are quoted so the pairs stay parseable.
+`Ingestion::RunLogger` owns the format; call sites pass fields, not strings.
+
+| Event | Level | Reports |
+|---|---|---|
+| `ingestion.started` | info | mode |
+| `ingestion.fetched` | info | event count, rate-limit posture |
+| `ingestion.filtered` | info | push events kept, rejected |
+| `ingestion.processed` | info | inserted, duplicates, malformed |
+| `ingestion.enriched` | info | cache hits, fetches, skipped, failed |
+| `ingestion.finished` | info | the full run summary |
+| `ingestion.sleeping` | info | seconds and why |
+| `ingestion.shutdown` | info | the signal received |
+| `ingestion.malformed` | warn | event id and reason |
+| `http.retrying` | warn | url, attempt/max, delay, reason |
+| `ingestion.rate_limited` | warn | posture and action taken |
+| `ingestion.cycle_failed` | error | error class and message |
 
 ## 7. Configuration
 
@@ -186,6 +223,8 @@ request. Today a refused feed request raises out of the runner and exits non-zer
 | `POLL_INTERVAL_SECONDS` | Sleep between cycles in `--loop` | `60` |
 | `REQUEST_TIMEOUT_SECONDS` | HTTP open/read timeout | `10` |
 | `RATE_LIMIT_RESERVE` | Requests held back from enrichment | `10` |
+| `MAX_ATTEMPTS` | Total attempts per request before giving up | `3` |
+| `RETRY_BASE_DELAY_SECONDS` | Backoff base; doubles per attempt, plus jitter | `1` |
 | `RAILS_ENV` | Rails environment | `development` |
 | `LOG_LEVEL` | Log verbosity | `info` |
 
@@ -225,8 +264,8 @@ If `actors` and `repositories` are empty after a run, check the remaining budget
 
 - The public feed exposes roughly the last five minutes of activity and cannot be replayed, so
   gaps are inherent. Completeness is not a goal.
-- Unauthenticated requests are capped at 60/hour per IP. Enrichment respects that budget, but the
-  feed request does not yet stop gracefully when it is refused (Story 4).
+- Unauthenticated requests are capped at 60/hour per IP. Both the feed request and enrichment
+  respect that budget.
 - Enriched actor and repository records are never refreshed, so a renamed repository or a changed
   login keeps its first-seen value.
 - A batch can reference more distinct actors and repositories than the budget allows, so some push
@@ -235,4 +274,6 @@ If `actors` and `repositories` are empty after a run, check the remaining budget
 - Actors whose login contains characters that are invalid in a URL — bot accounts such as
   `github-actions[bot]` — cannot be fetched, and are counted as enrichment failures. Their push
   events are still ingested and still carry `actor_id`.
-- Ingestion logs are not routed to stdout yet, so `docker compose logs -f` shows little. Story 4.
+- Logs are plain `key=value` text on stdout, not JSON, and there is no metrics backend. That is
+  the right weight for a service an operator reads with `docker compose logs -f`; a production
+  deployment would add structured JSON and OpenTelemetry.

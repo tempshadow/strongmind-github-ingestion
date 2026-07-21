@@ -45,6 +45,9 @@ services:
       GITHUB_EVENTS_URL: https://api.github.com/events
       POLL_INTERVAL_SECONDS: 60
       REQUEST_TIMEOUT_SECONDS: 10
+      RATE_LIMIT_RESERVE: 10
+      MAX_ATTEMPTS: 3
+      RETRY_BASE_DELAY_SECONDS: 1
     restart: on-failure:3
     command: bundle exec bin/ingest --loop
 
@@ -59,6 +62,9 @@ services:
       LOG_LEVEL: info
       GITHUB_EVENTS_URL: https://api.github.com/events
       REQUEST_TIMEOUT_SECONDS: 10
+      RATE_LIMIT_RESERVE: 10
+      MAX_ATTEMPTS: 3
+      RETRY_BASE_DELAY_SECONDS: 1
     profiles: ["manual"]
     command: bundle exec bin/ingest --once
 
