@@ -1,0 +1,1 @@
+# strongmind-github-ingestion
