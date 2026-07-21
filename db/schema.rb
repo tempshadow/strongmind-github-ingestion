@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_20_000002) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_20_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -21,9 +21,16 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_20_000002) do
     t.jsonb "raw_json", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "repo_id"
+    t.bigint "actor_id"
+    t.string "ref"
+    t.string "head_sha"
+    t.string "before_sha"
+    t.index ["actor_id"], name: "index_push_events_on_actor_id"
     t.index ["event_created_at"], name: "index_push_events_on_event_created_at"
     t.index ["github_event_id"], name: "index_push_events_on_github_event_id", unique: true
     t.index ["push_id"], name: "index_push_events_on_push_id", unique: true
+    t.index ["repo_id"], name: "index_push_events_on_repo_id"
   end
 
   create_table "raw_events", force: :cascade do |t|

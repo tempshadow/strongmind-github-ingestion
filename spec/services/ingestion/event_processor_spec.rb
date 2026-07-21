@@ -37,6 +37,19 @@ RSpec.describe Ingestion::EventProcessor do
       )
     end
 
+    it "projects structured fields" do
+      processor = described_class.new(valid_event)
+      processor.process
+
+      event = PushEvent.find_by(github_event_id: "evt_1")
+      expect(event.push_id).to eq(123)
+      expect(event.repo_id).to eq(100)
+      expect(event.actor_id).to eq(1)
+      expect(event.ref).to eq("refs/heads/main")
+      expect(event.head_sha).to eq("abc123")
+      expect(event.before_sha).to eq("def456")
+    end
+
     it "detects duplicate by github_event_id" do
       processor1 = described_class.new(valid_event)
       processor1.process

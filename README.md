@@ -50,14 +50,14 @@ After `docker compose up`, wait 30 seconds and then check:
    ```bash
    docker compose logs ingest-worker
    ```
-   Story 1 does not route ingestion logs to stdout yet (Story 4), so expect only the database-wait line. Verify via the database instead.
+   Ingestion logs are not routed to stdout yet (Story 4), so expect only the database-wait line. Verify via the database instead.
 
 2. **Data is persisted:**
    ```bash
    docker compose exec -T db psql -U strongmind_ingestion -d strongmind_ingestion_dev \
-     -c "SELECT github_event_id, push_id FROM push_events LIMIT 5;"
+     -c "SELECT repo_id, push_id, ref, head_sha, before_sha FROM push_events LIMIT 5;"
    ```
-   You should see rows with event IDs and push IDs. `raw_events` will have at least as many rows, since it records every event type.
+   You should see the key push attributes as columns, with no JSON parsing. `raw_events` will have at least as many rows, since it records every event type.
 
 3. **Tests pass:**
    ```bash
@@ -68,7 +68,7 @@ After `docker compose up`, wait 30 seconds and then check:
 ## Architecture
 
 See [context.md](context.md) for full documentation on:
-- Data model (push_events, raw_events)
+- Data model (push_events with structured projection, raw_events)
 - Ingestion flow (polling, filtering, persistence)
 - Idempotency (duplicate detection via unique constraints)
 - Configuration and verification steps
