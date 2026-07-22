@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Ingestion
   class Enricher
     ACTOR_COLUMNS = %i[login url avatar_url].freeze
@@ -36,8 +38,11 @@ module Ingestion
     end
 
     def resolve(model, urls, columns)
+      # One query for the whole batch's cache status, rather than an exists? per reference.
+      cached_ids = model.where(id: urls.keys).pluck(:id).to_set
+
       urls.each do |id, url|
-        if model.exists?(id)
+        if cached_ids.include?(id)
           @cache_hits += 1
         elsif affordable?
           fetch_and_store(model, id, url, columns)

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Actor < ApplicationRecord
   has_many :push_events, foreign_key: :actor_id, inverse_of: :actor, dependent: nil
 

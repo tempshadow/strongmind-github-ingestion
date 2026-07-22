@@ -13,7 +13,19 @@ SimpleCov.start do
   add_filter "/spec/"
   add_filter "/config/"
   add_filter "/db/"
-  minimum_coverage 85
+  add_group "Services", "app/services"
+  minimum_coverage line: 85
+end
+
+# SimpleCov has no built-in per-group floor, so enforce the 95% app/services
+# requirement here before the overall check runs.
+SimpleCov.at_exit do
+  SimpleCov.result.format!
+  services = SimpleCov.result.groups["Services"]
+  if services && services.covered_percent < 95
+    warn "app/services line coverage #{services.covered_percent.round(2)}% is below the required 95%"
+    Kernel.exit(1)
+  end
 end
 
 RSpec.configure do |config|

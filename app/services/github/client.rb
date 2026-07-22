@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "net/http"
 require "json"
 require "uri"
@@ -24,10 +26,27 @@ module Github
       Net::OpenTimeout, Net::ReadTimeout, IOError, SocketError, Timeout::Error
     ].freeze
 
-    def initialize(url: nil, timeout: nil, config: nil, logger: nil)
-      @config = config || Ingestion.config
-      @url = url || @config.events_url
-      @timeout = timeout || @config.request_timeout
+    DEFAULT_EVENTS_URL = "https://api.github.com/events"
+    DEFAULT_TIMEOUT = 10
+    DEFAULT_MAX_ATTEMPTS = 3
+    DEFAULT_RETRY_BASE_DELAY = 1.0
+
+    USER_AGENT = "StrongMind-GitHub-Ingestion/1.0"
+    ACCEPT = "application/vnd.github.v3+json"
+
+    HTTP_TOO_MANY_REQUESTS = 429
+    HTTP_FORBIDDEN = 403
+    HTTP_SERVER_ERROR = 500
+
+    # Values are passed in rather than read from Ingestion.config, so this class carries no
+    # dependency back on the Ingestion layer that consumes it.
+    def initialize(url: DEFAULT_EVENTS_URL, timeout: DEFAULT_TIMEOUT,
+                   max_attempts: DEFAULT_MAX_ATTEMPTS, retry_base_delay: DEFAULT_RETRY_BASE_DELAY,
+                   logger: nil)
+      @url = url
+      @timeout = timeout
+      @max_attempts = max_attempts
+      @retry_base_delay = retry_base_delay
       @logger = logger
     end
 
@@ -62,12 +81,12 @@ module Github
         attempt += 1
         yield
       rescue *RETRYABLE_EXCEPTIONS => e
-        raise TransientError, "#{e.class}: #{e.message}" if attempt >= @config.max_attempts
+        raise TransientError, "#{e.class}: #{e.message}" if attempt >= @max_attempts
 
         backoff(attempt, url, e.class.name)
         retry
       rescue TransientError => e
-        raise if attempt >= @config.max_attempts
+        raise if attempt >= @max_attempts
 
         backoff(attempt, url, e.message)
         retry
@@ -75,9 +94,9 @@ module Github
     end
 
     def backoff(attempt, url, reason)
-      delay = @config.retry_base_delay * (2**(attempt - 1))
-      delay += rand * @config.retry_base_delay
-      @logger&.retrying(url: url, attempt: attempt, max: @config.max_attempts,
+      delay = @retry_base_delay * (2**(attempt - 1))
+      delay += rand * @retry_base_delay
+      @logger&.retrying(url: url, attempt: attempt, max: @max_attempts,
                         delay: delay.round(2), reason: reason)
       sleep(delay)
     end
@@ -90,8 +109,8 @@ module Github
 
       request = Net::HTTP::Get.new(uri.request_uri)
       # GitHub rejects requests without a User-Agent.
-      request["User-Agent"] = "StrongMind-GitHub-Ingestion/1.0"
-      request["Accept"] = "application/vnd.github.v3+json"
+      request["User-Agent"] = USER_AGENT
+      request["Accept"] = ACCEPT
 
       http.request(request)
     end
@@ -114,9 +133,9 @@ module Github
       code = response.code.to_i
 
       # An unauthenticated 403 from GitHub is nearly always the rate limiter.
-      if code == 429 || (code == 403 && rate_limit.exhausted?)
+      if code == HTTP_TOO_MANY_REQUESTS || (code == HTTP_FORBIDDEN && rate_limit.exhausted?)
         raise TransientError.new("Rate limited: HTTP #{code}", rate_limit: rate_limit)
-      elsif code >= 500
+      elsif code >= HTTP_SERVER_ERROR
         raise TransientError.new("Upstream error: HTTP #{code}", rate_limit: rate_limit)
       else
         raise PermanentError, "HTTP error: #{code}"

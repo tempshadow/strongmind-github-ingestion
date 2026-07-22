@@ -1,0 +1,45 @@
+plugins:
+  - rubocop-performance
+
+AllCops:
+  TargetRubyVersion: 3.3
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - "db/schema.rb"
+    - "db/migrate/**/*"
+    - "config/**/*"
+    - "bin/**/*"
+    - "spec/**/*"
+    - "vendor/**/*"
+    # Generated Rails boilerplate, not application code.
+    - "Rakefile"
+    - "config.ru"
+    - "Gemfile"
+
+# The gates this project holds itself to.
+Metrics/CyclomaticComplexity:
+  Max: 15
+Metrics/PerceivedComplexity:
+  Max: 15
+Metrics/AbcSize:
+  Max: 25
+Metrics/ClassLength:
+  Max: 160
+Metrics/MethodLength:
+  Max: 20
+
+# One public entry point per service; module_function/documentation not required.
+Style/Documentation:
+  Enabled: false
+
+# The codebase uses double quotes throughout.
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+Metrics/BlockLength:
+  Exclude:
+    - "spec/**/*"
+
+# Rails' service objects legitimately rescue broad error hierarchies.
+Lint/RescueException:
+  Enabled: true

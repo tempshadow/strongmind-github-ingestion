@@ -1,12 +1,18 @@
+# frozen_string_literal: true
+
 module Github
   class RateLimit
+    HEADER_LIMIT = "x-ratelimit-limit"
+    HEADER_REMAINING = "x-ratelimit-remaining"
+    HEADER_RESET = "x-ratelimit-reset"
+
     attr_reader :limit, :remaining, :reset_at
 
     def self.from_response(response)
       new(
-        limit: response["x-ratelimit-limit"],
-        remaining: response["x-ratelimit-remaining"],
-        reset: response["x-ratelimit-reset"]
+        limit: response[HEADER_LIMIT],
+        remaining: response[HEADER_REMAINING],
+        reset: response[HEADER_RESET]
       )
     end
 
