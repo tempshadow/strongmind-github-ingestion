@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Ingestion
   class RunSummary
     attr_accessor :run_id, :fetched_count, :filtered_count, :inserted_count,

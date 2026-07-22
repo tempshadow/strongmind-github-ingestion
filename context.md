@@ -1,7 +1,8 @@
 # Project Context
 
-> Describes the repository **as built on this branch**: Stories 1, 2 and 3. Later stories extend
-> this document as they land.
+> Describes the repository **as built on this branch**: all four stories, plus the Story 5
+> readiness pass (design brief, RuboCop, and internal cleanups). See `DESIGN_BRIEF.md` for the
+> 1–2 page submission brief.
 
 ## 1. Purpose
 
@@ -106,13 +107,17 @@ references an actor or repository row that does not exist yet. `PushEvent belong
 
 ## 5. Ingestion Flow
 
-1. `bin/ingest` boots Rails and builds a `RunSummary`.
+`Ingestion::Runner` owns *when* cycles run — once vs. loop, signal handling, the sleep cadence —
+and delegates one pass to `Ingestion::Cycle`, which owns *what* a pass does:
+
+1. `bin/ingest` boots Rails; `Runner` builds a `RunSummary` and a `Cycle`.
 2. `Github::Client#fetch_events` issues one `GET` to the events endpoint.
-3. `Ingestion::Runner#record_raw_events` writes a `raw_events` row per event, before filtering.
-4. `Ingestion::EventFilter` selects `type == "PushEvent"` and counts what it rejected.
+3. `Cycle` writes the `raw_events` audit rows in a single `insert_all` (ON CONFLICT DO NOTHING),
+   before filtering, so every event type is retained.
+4. `Ingestion::EventFilter` selects `type == Github::EventType::PUSH` and counts what it rejected.
 5. `Ingestion::EventProcessor` persists each push event and reports one of `:inserted`,
-   `:duplicate`, `:malformed`.
-6. `Ingestion::Enricher` resolves the actors and repositories the batch references (Section 6).
+   `:duplicate`, `:malformed` (see `EventProcessor::Outcome`).
+6. `Ingestion::Enricher` resolves the actors and repositories the batch references (Section 5a).
 7. The runner returns the summary; `--once` exits, `--loop` sleeps `POLL_INTERVAL_SECONDS`.
 
 The rate-limit headers on the feed response are read into the summary before enrichment begins, so
@@ -125,7 +130,8 @@ enrichment spends against a measured budget rather than an assumed one.
 1. Collect `actor.url` and `repo.url` keyed by GitHub ID. A hash keyed by ID means a batch that
    references the same actor thirty times fetches it once. References missing an ID or a URL are
    ignored.
-2. Look the ID up in `actors` / `repositories`. A hit costs no HTTP request.
+2. Resolve the whole batch's cache status in one query (`where(id: ids)`), rather than an
+   existence check per reference. A cached ID costs no HTTP request.
 3. On a miss, fetch — but only if `remaining - RATE_LIMIT_RESERVE` is still positive. Otherwise the
    reference is counted as a budget skip and left for a later cycle.
 4. Persist the record with its verbatim response and `fetched_at`, then move on. The push event is
@@ -230,12 +236,43 @@ that correlates one cycle. Values containing whitespace are quoted so the pairs 
 
 Read through `Ingestion.config`, never from `ENV` at a call site.
 
+## 7a. Testing Strategy (Extension D)
+
+Testing is a first-class deliverable, not an afterthought. The suite is **hermetic and offline**:
+`WebMock.disable_net_connect!` blocks all outbound HTTP, so no test depends on GitHub being
+reachable or on the 60/hour budget. It runs entirely under `docker compose run --rm test`.
+
+**What is tested, and at which level:**
+
+| Level | Specs | What they verify |
+|---|---|---|
+| Models | `push_event`, `raw_event`, `actor`, `repository` | Uniqueness constraints, the `optional` actor/repository associations, and that projected columns are nullable. |
+| HTTP client | `github/client`, `github/client_resilience` | The shared request path, error **classification** (transient vs. permanent), bounded retry with backoff/jitter, and that permanent errors are not retried. |
+| Rate limit | `github/rate_limit` | Header parsing, and that absent/malformed headers mean *unknown*, not *unlimited*. |
+| Pipeline units | `ingestion/event_filter`, `event_processor`, `enricher`, `runner`, `run_logger` | `PushEvent` selection; the `:inserted`/`:duplicate`/`:malformed` outcomes; cache-first enrichment with per-batch dedup and budget skips; once/loop orchestration and signal handling; the `key=value` log format. |
+| Integration | `integration/story_1`..`story_4` | Each story's acceptance criteria driven through the real `Runner` end to end, against stubbed HTTP. |
+
+**Why these choices.** The behaviours this project is judged on get explicit, named tests rather
+than being left to incidental coverage: **idempotency** (re-running a batch inserts nothing and
+issues no enrichment requests — DB-level uniqueness on `github_event_id` and `push_id`),
+**malformed input** (a push with no `push_id`, and a response body that is not a list, are skipped
+without aborting the batch or crashing), **rate-limit exhaustion** (enrichment yields at the
+reserve; a 429/exhausted-403 abandons the cycle transiently), and **graceful shutdown** (the loop
+finishes its in-flight cycle and exits 0, and wakes promptly from a long poll interval instead of
+sleeping through a signal). Unit specs isolate each collaborator through its narrow interface;
+integration specs prove the wiring, so a contract change that unit doubles would miss still fails.
+
+Doubles honour the real collaborators' contracts, including their error classes
+(`TransientError`/`PermanentError`), per the Liskov guardrail. Coverage is gated in CI-equivalent
+fashion: **85% overall, 95% on `app/services`** (`spec/rails_helper.rb`), currently ~99%. Coverage
+is a floor, not a target — assertion-free tests to move the number are prohibited.
+
 ## 8. How to Verify
 
 ```bash
 docker compose up --build          # db, api, ingest-worker
 docker compose run --rm ingest     # one cycle, exits 0
-docker compose run --rm test       # 86 examples, 0 failures
+docker compose run --rm test       # 113 examples, 0 failures
 ```
 
 Then check the data:

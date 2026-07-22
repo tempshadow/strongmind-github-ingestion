@@ -1,56 +1,74 @@
+# frozen_string_literal: true
+
 module Ingestion
   class RunLogger
+    # The stable event vocabulary an operator (or a log parser) keys on.
+    module Event
+      STARTED = "ingestion.started"
+      FETCHED = "ingestion.fetched"
+      FILTERED = "ingestion.filtered"
+      PROCESSED = "ingestion.processed"
+      ENRICHED = "ingestion.enriched"
+      MALFORMED = "ingestion.malformed"
+      RATE_LIMITED = "ingestion.rate_limited"
+      CYCLE_FAILED = "ingestion.cycle_failed"
+      FINISHED = "ingestion.finished"
+      SHUTDOWN = "ingestion.shutdown"
+      SLEEPING = "ingestion.sleeping"
+      RETRYING = "http.retrying"
+    end
+
     def initialize(run_id, logger: Rails.logger)
       @run_id = run_id
       @logger = logger
     end
 
     def started(mode:)
-      info("ingestion.started", mode: mode)
+      info(Event::STARTED, mode: mode)
     end
 
     def fetched(count:, rate_limit:)
-      info("ingestion.fetched", events: count, rate_limit: rate_limit.to_s)
+      info(Event::FETCHED, events: count, rate_limit: rate_limit.to_s)
     end
 
     def filtered(push_events:, rejected:)
-      info("ingestion.filtered", push_events: push_events, rejected: rejected)
+      info(Event::FILTERED, push_events: push_events, rejected: rejected)
     end
 
     def processed(inserted:, duplicates:, malformed:)
-      info("ingestion.processed", inserted: inserted, duplicates: duplicates, malformed: malformed)
+      info(Event::PROCESSED, inserted: inserted, duplicates: duplicates, malformed: malformed)
     end
 
     def enriched(hits:, fetches:, skipped:, failed:)
-      info("ingestion.enriched", cache_hits: hits, fetches: fetches, skipped: skipped, failed: failed)
+      info(Event::ENRICHED, cache_hits: hits, fetches: fetches, skipped: skipped, failed: failed)
     end
 
     def malformed_event(event_id:, reason:)
-      warn("ingestion.malformed", event_id: event_id, reason: reason)
+      warn(Event::MALFORMED, event_id: event_id, reason: reason)
     end
 
     def retrying(url:, attempt:, max:, delay:, reason:)
-      warn("http.retrying", url: url, attempt: "#{attempt}/#{max}", delay_s: delay, reason: reason)
+      warn(Event::RETRYING, url: url, attempt: "#{attempt}/#{max}", delay_s: delay, reason: reason)
     end
 
     def rate_limited(rate_limit:, action:)
-      warn("ingestion.rate_limited", rate_limit: rate_limit.to_s, action: action)
+      warn(Event::RATE_LIMITED, rate_limit: rate_limit.to_s, action: action)
     end
 
     def cycle_failed(error:)
-      error("ingestion.cycle_failed", error: error.class.name, message: error.message)
+      error(Event::CYCLE_FAILED, error: error.class.name, message: error.message)
     end
 
     def finished(summary:)
-      info("ingestion.finished", result: summary.to_s)
+      info(Event::FINISHED, result: summary.to_s)
     end
 
     def shutdown(signal:)
-      info("ingestion.shutdown", signal: signal)
+      info(Event::SHUTDOWN, signal: signal)
     end
 
     def sleeping(seconds:, reason:)
-      info("ingestion.sleeping", seconds: seconds.round, reason: reason)
+      info(Event::SLEEPING, seconds: seconds.round, reason: reason)
     end
 
     private

@@ -1,5 +1,16 @@
+# frozen_string_literal: true
+
 module Ingestion
   class EventProcessor
+    # The mutually exclusive results of processing one event.
+    module Outcome
+      INSERTED = :inserted
+      DUPLICATE = :duplicate
+      MALFORMED = :malformed
+    end
+
+    MISSING_IDENTITY = "Event missing push_id or payload"
+
     attr_reader :outcome, :event_id, :error_message
 
     def initialize(event)
@@ -10,55 +21,60 @@ module Ingestion
     end
 
     def process
-      validate_event
-      return self if malformed?
-
-      persist_event
+      if missing_identity?
+        mark_malformed(MISSING_IDENTITY)
+      else
+        persist_event
+      end
       self
     end
 
     def inserted?
-      outcome == :inserted
+      outcome == Outcome::INSERTED
     end
 
     def duplicate?
-      outcome == :duplicate
+      outcome == Outcome::DUPLICATE
     end
 
     def malformed?
-      outcome == :malformed
+      outcome == Outcome::MALFORMED
     end
 
     private
 
-    def validate_event
-      if @event[:payload].blank? || @event[:payload][:push_id].blank?
-        @outcome = :malformed
-        @error_message = "Event missing push_id or payload"
-        return
-      end
+    def missing_identity?
+      payload = @event[:payload]
+      payload.blank? || payload[:push_id].blank?
+    end
+
+    def mark_malformed(message)
+      @outcome = Outcome::MALFORMED
+      @error_message = message
     end
 
     def persist_event
-      push_event = PushEvent.new(
+      PushEvent.create!(attributes)
+      @outcome = Outcome::INSERTED
+    rescue ActiveRecord::RecordNotUnique
+      @outcome = Outcome::DUPLICATE
+    rescue ActiveRecord::RecordInvalid => e
+      mark_malformed(e.message)
+    end
+
+    def attributes
+      payload = @event[:payload]
+      {
         github_event_id: @event[:id],
-        push_id: @event[:payload][:push_id],
+        push_id: payload[:push_id],
         repo_id: @event[:repo]&.dig(:id),
         actor_id: @event[:actor]&.dig(:id),
-        ref: @event[:payload][:ref],
-        head_sha: @event[:payload][:head],
-        before_sha: @event[:payload][:before],
+        ref: payload[:ref],
+        head_sha: payload[:head],
+        before_sha: payload[:before],
         event_created_at: @event[:created_at],
         raw_json: @event
-      )
-
-      push_event.save!
-      @outcome = :inserted
-    rescue ActiveRecord::RecordNotUnique
-      @outcome = :duplicate
-    rescue ActiveRecord::RecordInvalid => e
-      @outcome = :malformed
-      @error_message = e.message
+      }
     end
   end
 end

@@ -4,19 +4,9 @@ RSpec.describe Github::Client, "resilience" do
   let(:events_url) { "https://api.github.com/events" }
 
   # Zero base delay keeps the suite fast; the backoff arithmetic is asserted separately.
-  let(:config) do
-    instance_double(
-      Ingestion::Config,
-      events_url: events_url,
-      request_timeout: 5,
-      max_attempts: 3,
-      retry_base_delay: 0.0,
-      poll_interval: 60,
-      rate_limit_reserve: 10
-    )
+  let(:client) do
+    described_class.new(url: events_url, timeout: 5, max_attempts: 3, retry_base_delay: 0.0)
   end
-
-  let(:client) { described_class.new(config: config) }
 
   before { WebMock.enable! }
 
@@ -87,12 +77,12 @@ RSpec.describe Github::Client, "resilience" do
     end
 
     it "backs off for longer on each successive attempt" do
-      allow(config).to receive(:retry_base_delay).and_return(1.0)
+      slow_client = described_class.new(url: events_url, timeout: 5, max_attempts: 3, retry_base_delay: 1.0)
       stub_request(:get, events_url).to_timeout
       delays = []
       allow_any_instance_of(described_class).to receive(:sleep) { |_, seconds| delays << seconds }
 
-      expect { client.fetch_events }.to raise_error(Github::Client::TransientError)
+      expect { slow_client.fetch_events }.to raise_error(Github::Client::TransientError)
 
       expect(delays.length).to eq(2)
       expect(delays.first).to be_between(1.0, 2.0)
@@ -104,7 +94,8 @@ RSpec.describe Github::Client, "resilience" do
       run_logger = instance_spy(Ingestion::RunLogger)
       stub_request(:get, events_url).to_timeout.then.to_return(status: 200, body: "[]")
 
-      described_class.new(config: config, logger: run_logger).fetch_events
+      described_class.new(url: events_url, timeout: 5, max_attempts: 3,
+                          retry_base_delay: 0.0, logger: run_logger).fetch_events
 
       expect(run_logger).to have_received(:retrying)
         .with(hash_including(url: events_url, attempt: 1, max: 3))

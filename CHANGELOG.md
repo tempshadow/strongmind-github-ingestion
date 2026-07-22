@@ -6,7 +6,32 @@ Entries are added only after a story branch is merged into `main`.
 
 ## [Unreleased]
 
-### STORY-4: Operability and Observability (commit `bdb6e6d`)
+### STORY-5: Submission readiness
+- **Added:**
+  - `DESIGN_BRIEF.md` — the 1–2 page brief the assignment requires, completing Story 3's fourth
+    acceptance criterion and Extension D's "explain what you tested and why"
+  - RuboCop (`.rubocop.yml`) with the project's own gates enforced: cyclomatic and perceived
+    complexity ≤ 15, ABC ≤ 25, method length ≤ 20, class length ≤ 160. This makes true the
+    `CLAUDE.md` claim that style is "enforced by RuboCop"
+  - `Github::EventType`, `EventProcessor::Outcome`, and `RunLogger::Event` — named constants for
+    the event-type, outcome, and log-vocabulary strings that were previously inline literals
+  - `Ingestion::Cycle` — the ingestion pipeline, extracted from `Runner`
+- **Changed:**
+  - `Github::Client` no longer reads `Ingestion.config`; configuration values are passed in. This
+    breaks the `Github ↔ Ingestion` namespace cycle so dependencies flow one way (Ingestion → Github)
+  - `Runner` now owns only *when* cycles run (once/loop, signals, sleep) and delegates the pipeline
+    to `Cycle`, dropping its collaborator fan-out from 8 to 4
+  - HTTP status codes, header names, and User-Agent are named constants
+- **Fixed:**
+  - `EventProcessor` no longer used a predicate method with a side effect (`reject_malformed`)
+- **Technical Notes:**
+  - Performance: `Enricher` now resolves a batch's cache status in one query instead of an
+    `exists?` per reference, and raw-event audit rows are written with a single `insert_all`
+    (ON CONFLICT DO NOTHING) instead of an exception per duplicate on the overlapping feed
+  - Behaviour is unchanged; all 113 examples still pass and RuboCop reports no offenses
+  - Documentation-only for the stories' functional behaviour: no acceptance criterion changed
+
+### STORY-4: Operability and Observability (commit `227e241`)
 - **Added:**
   - `Ingestion::RunLogger` — structured `key=value` logging to stdout, every line carrying the `run_id` that correlates one cycle
   - Error classification in `Github::Client`: `TransientError` (timeouts, resets, 5xx, 429, rate-limited 403) and `PermanentError` (other 4xx, unparseable bodies, malformed URLs)
@@ -40,7 +65,7 @@ Entries are added only after a story branch is merged into `main`.
   - Batch deduplication: multiple references to the same actor/repo in one batch trigger only one fetch
   - Budget-aware: enrichment stops when spendable budget (remaining minus reserve) falls to zero; unmatched references are counted as skips and left for a later cycle
   - No cascade between ingestion and enrichment: unenriched push events are valid, queryable records; failed enrichment is logged, not raised
-  - Acceptance criteria: URLs extracted from payload ✓, data persisted durably ✓, repeated fetches avoided via cache ✓; approach documented in `context.md` (design brief still outstanding)
+  - Acceptance criteria: URLs extracted from payload ✓, data persisted durably ✓, repeated fetches avoided via cache ✓, approach explained in the design brief ✓ (delivered in STORY-5)
   - Story 1 & 2 criteria still met: events filtered and persisted ✓, raw payloads retained ✓, fields queryable ✓
 
 ### STORY-2: Persist Raw and Structured Data (commit `8910f57`)

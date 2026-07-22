@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class PushEvent < ApplicationRecord
   # Optional: an event is persisted before enrichment runs, and enrichment may be
   # skipped when the rate-limit budget is short.

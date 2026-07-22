@@ -5,7 +5,12 @@ A Rails-based service that ingests `PushEvent` data from the public GitHub Event
 ## Quick Start
 
 ### Prerequisites
-- Docker and Docker Compose
+- Docker and Docker Compose (Docker Desktop on macOS/Windows)
+
+No other setup is required: the Compose stack is self-contained, the database schema is created and
+migrated automatically on first boot, and **no `.env` file is needed** — every setting has a working
+default baked into `docker-compose.yml`. (`.env.example` documents the variables for reference and
+for running outside Docker; you do not need to copy it.)
 
 ### Build and Start
 ```bash
@@ -44,7 +49,14 @@ docker compose exec api rails console
 
 ## How to Verify It's Working
 
-After `docker compose up`, wait 30 seconds and then check:
+**Timing.** `ingest-worker` runs its first cycle as soon as the database is ready — expect the
+first rows within a few seconds of `docker compose up`. It then polls every
+`POLL_INTERVAL_SECONDS` (default 60), so the **second** cycle — the one that proves idempotency
+and the enrichment cache — appears about a minute later. The public feed only surfaces the last
+few minutes of activity and is capped at 60 requests/hour unauthenticated, so let it run a few
+minutes to accumulate meaningful volume; a single cycle ingests roughly 30 events.
+
+Then check:
 
 1. **Logs show ingestion running:**
    ```bash
@@ -90,6 +102,17 @@ After `docker compose up`, wait 30 seconds and then check:
    ```
    Should exit with exit code 0.
 
+### Lint
+
+```bash
+docker compose run --rm --entrypoint bundle test exec rubocop
+```
+
+## Design
+
+- [DESIGN_BRIEF.md](DESIGN_BRIEF.md) — 1–2 page brief: problem framing, architecture, tradeoffs,
+  rate-limit and durability handling, and what was intentionally not built.
+
 ## Architecture
 
 See [context.md](context.md) for full documentation on:
@@ -101,7 +124,11 @@ See [context.md](context.md) for full documentation on:
 ## Configuration
 
 Environment variables (see `.env.example`):
-- `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` — PostgreSQL connection
+- `DATABASE_URL` — full PostgreSQL connection string; this is what the Compose services use and it
+  takes precedence over the `PG*` variables below
+- `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` — per-field connection settings read by
+  `config/database.yml` when `DATABASE_URL` is not set (e.g. running outside Docker); `PGHOST`,
+  `PGPORT`, and `PGUSER` also drive the container's database-readiness wait
 - `RAILS_ENV` — Rails environment (development, test, production)
 - `LOG_LEVEL` — Log verbosity (default: info)
 - `GITHUB_EVENTS_URL` — GitHub events endpoint (default: https://api.github.com/events)
